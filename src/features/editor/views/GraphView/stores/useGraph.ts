@@ -36,6 +36,8 @@ interface GraphActions {
   setDirection: (direction: CanvasDirection) => void;
   setViewPort: (ref: ViewPort) => void;
   setSelectedNode: (nodeData: NodeData) => void;
+  refreshSelectedNode: () => void; // NEW
+
   focusFirstNode: () => void;
   toggleFullscreen: (value: boolean) => void;
   zoomIn: () => void;
@@ -47,8 +49,38 @@ interface GraphActions {
 
 const useGraph = create<Graph & GraphActions>((set, get) => ({
   ...initialStates,
+
   clearGraph: () => set({ nodes: [], edges: [], loading: false }),
+
   setSelectedNode: nodeData => set({ selectedNode: nodeData }),
+
+  // NEW: refresh selected node from JSON using its path
+  refreshSelectedNode: () => {
+    const selectedNode = get().selectedNode;
+    if (!selectedNode || !selectedNode.path) return;
+
+    const jsonStr = useJson.getState().getJson();
+    if (!jsonStr) return;
+    const parsed = JSON.parse(jsonStr);
+
+    let node: any = parsed;
+    for (let i = 0; i < selectedNode.path.length; i++) {
+      if (node[selectedNode.path[i]] === undefined) return;
+      node = node[selectedNode.path[i]];
+    }
+
+    set({
+      selectedNode: {
+        text: Object.entries(node).map(([k, v]) => ({
+          key: k,
+          value: v,
+          type: typeof v,
+        })),
+        path: selectedNode.path, // preserve path
+      } as NodeData,
+    });
+  },
+
   setGraph: (data, options) => {
     const { nodes, edges } = parser(data ?? useJson.getState().json);
 
@@ -67,29 +99,36 @@ const useGraph = create<Graph & GraphActions>((set, get) => ({
       ...options,
     });
   },
+
   setDirection: (direction = "RIGHT") => {
     set({ direction });
     setTimeout(() => get().centerView(), 200);
   },
+
   setLoading: loading => set({ loading }),
+
   focusFirstNode: () => {
     const rootNode = document.querySelector("g[id$='node-1']");
     get().viewPort?.camera?.centerFitElementIntoView(rootNode as HTMLElement, {
       elementExtraMarginForZoom: 100,
     });
   },
+
   setZoomFactor: zoomFactor => {
     const viewPort = get().viewPort;
     viewPort?.camera?.recenter(viewPort.centerX, viewPort.centerY, zoomFactor);
   },
+
   zoomIn: () => {
     const viewPort = get().viewPort;
     viewPort?.camera?.recenter(viewPort.centerX, viewPort.centerY, viewPort.zoomFactor + 0.1);
   },
+
   zoomOut: () => {
     const viewPort = get().viewPort;
     viewPort?.camera?.recenter(viewPort.centerX, viewPort.centerY, viewPort.zoomFactor - 0.1);
   },
+
   centerView: () => {
     const viewPort = get().viewPort;
     viewPort?.updateContainerSize();
@@ -99,6 +138,7 @@ const useGraph = create<Graph & GraphActions>((set, get) => ({
       viewPort?.camera?.centerFitElementIntoView(canvas);
     }
   },
+
   toggleFullscreen: fullscreen => set({ fullscreen }),
   setViewPort: viewPort => set({ viewPort }),
 }));
